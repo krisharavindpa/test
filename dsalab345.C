@@ -2,57 +2,37 @@
 #include <pthread.h>
 #include <unistd.h>
 
-#define N 5
+pthread_mutex_t t[5];
+pthread_t a[5];
 
-pthread_mutex_t torches[N];
-pthread_t arms[N];
+void* weld(void* arg) {
+    long id = (long)arg;
+    int first = id, second = (id + 1) % 5;
 
-void* weld(void* num) {
-    int id = *(int*)num;
-    int left = id;
-    int right = (id + 1) % N;
+    // Last arm reverses pickup order to prevent circular deadlock
+    if (id == 4) { int tmp = first; first = second; second = tmp; }
 
-    // Thinking / Idle
-    printf("Arm %d is idle.\n", id);
+    printf("Arm %ld is idle.\n", id);
     sleep(1);
 
-    // Asymmetric pickup: Arm 4 picks up right first to break circular wait
-    if (id == N - 1) {
-        pthread_mutex_lock(&torches[right]);
-        pthread_mutex_lock(&torches[left]);
-    } else {
-        pthread_mutex_lock(&torches[left]);
-        pthread_mutex_lock(&torches[right]);
-    }
+    pthread_mutex_lock(&t[first]);
+    pthread_mutex_lock(&t[second]);
 
-    // Critical Section: Welding
-    printf("--> Arm %d acquired torches %d and %d: WELDING.\n", id, left, right);
-    sleep(2);
+    printf("--> Arm %ld is WELDING.\n", id);
+    sleep(1);
 
-    // Release torches
-    pthread_mutex_unlock(&torches[left]);
-    pthread_mutex_unlock(&torches[right]);
-    printf("Arm %d finished welding and released torches.\n", id);
+    pthread_mutex_unlock(&t[first]);
+    pthread_mutex_unlock(&t[second]);
 
+    printf("Arm %ld finished welding.\n", id);
     return NULL;
 }
 
 int main() {
-    int ids[N];
-
-    for (int i = 0; i < N; i++)
-        pthread_mutex_init(&torches[i], NULL);
-
-    for (int i = 0; i < N; i++) {
-        ids[i] = i;
-        pthread_create(&arms[i], NULL, weld, &ids[i]);
+    for (long i = 0; i < 5; i++) {
+        pthread_mutex_init(&t[i], NULL);
+        pthread_create(&a[i], NULL, weld, (void*)i);
     }
-
-    for (int i = 0; i < N; i++)
-        pthread_join(arms[i], NULL);
-
-    for (int i = 0; i < N; i++)
-        pthread_mutex_destroy(&torches[i]);
-
+    for (int i = 0; i < 5; i++) pthread_join(a[i], NULL);
     return 0;
 }
